@@ -1,0 +1,12 @@
+torch
+torchvision
+diffusers
+transformers
+accelerate
+safetensors
+Pillow
+opencv-python
+numpy
+gradio
+requests
+python-dotenv
