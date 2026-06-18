@@ -11,8 +11,7 @@ from src.config import (
 
 def fallback_prompt(task_instruction: str):
     """
-    Rule-based prompt generation.
-    Used when no LLM API is available.
+    Rule-based prompt generation used when no LLM API is available.
     """
     task_instruction = task_instruction.strip()
     if task_instruction == "":
@@ -24,7 +23,7 @@ def fallback_prompt(task_instruction: str):
         "Preserve all unmasked regions exactly. "
         "Fill the masked area with contextually matching content only. "
         "Natural restoration, seamless background, coherent lighting, realistic texture, "
-        "high quality, visually consistent with the surrounding area. "
+        "high quality, detailed, visually consistent with the surrounding area. "
         "Do not create new people, faces, portraits, text, logos, or unrelated objects."
     )
 
@@ -53,6 +52,10 @@ def extract_json_from_text(text: str):
 
 
 def generate_prompt_with_llm(task_instruction: str):
+    """
+    Use OpenRouter to generate positive / negative prompts.
+    Fallback to rule-based prompt if the API key is missing or request fails.
+    """
     if not OPENROUTER_API_KEY:
         return fallback_prompt(task_instruction)
 
