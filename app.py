@@ -94,15 +94,12 @@ OpenRouter model: `{OPENROUTER_MODEL}`
 4. Optionally enter extra requirements.
 5. Click Generate Restoration.
 
-Mask rule:
+All outputs are unified to the same canvas size:
 
-- Painted area = region to restore
-- Unpainted area = preserved region
-
-Important:
-
-- The preview mask on the right should show only the selected region in white.
-- If the mask is almost fully white, clear the layer and draw again.
+- Processed Input
+- Extracted Mask
+- Restored Result
+- Comparison
 """
         )
 
@@ -130,8 +127,8 @@ Important:
                 custom_instruction = gr.Textbox(
                     label="Custom Instruction / Extra Requirement",
                     placeholder=(
-                        "Optional. Example: preserve bicycle structure, keep pavement texture, "
-                        "do not create people or unrelated objects"
+                        "Optional. Example: preserve original structure, keep grass texture, "
+                        "do not create unrelated objects"
                     ),
                     lines=3,
                     value="preserve the original image structure and restore only the masked region",
@@ -185,21 +182,25 @@ Important:
                     processed_input = gr.Image(
                         label="Processed Input",
                         type="pil",
+                        height=320,
                     )
 
                     processed_mask = gr.Image(
                         label="Extracted Mask",
                         type="pil",
+                        height=320,
                     )
 
                 result_image = gr.Image(
                     label="Restored Result",
                     type="pil",
+                    height=320,
                 )
 
                 comparison_image = gr.Image(
                     label="Comparison: Input | Mask | Result",
                     type="pil",
+                    height=320,
                 )
 
                 with gr.Row():
