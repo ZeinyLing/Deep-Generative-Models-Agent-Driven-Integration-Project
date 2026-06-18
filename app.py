@@ -9,9 +9,45 @@ from src.image_utils import (
 from src.inpaint_pipeline import run_inpainting
 
 
+# =========================================================
+# Task presets
+# =========================================================
+TASK_PRESETS = {
+    "Remove Watermark": "remove watermark and restore the background naturally",
+    "Remove Text / Logo": "remove text or logo and restore the background naturally",
+    "Remove Object": "remove the selected object and fill the region with a natural background",
+    "Restore Damage / Scratch": "repair the damaged or scratched area and restore natural texture",
+    "Clean Background": "clean the selected background region and make it visually consistent",
+    "Custom": "",
+}
+
+
+def build_task_instruction(task_type, custom_instruction):
+    """
+    Convert selected task into the final instruction used by the inpainting pipeline.
+    If Custom is selected, use the user's custom instruction directly.
+    Otherwise, combine preset instruction and optional extra detail.
+    """
+    task_type = task_type or "Remove Watermark"
+    custom_instruction = (custom_instruction or "").strip()
+
+    preset_instruction = TASK_PRESETS.get(task_type, "")
+
+    if task_type == "Custom":
+        if custom_instruction:
+            return custom_instruction
+        return "restore the masked region naturally"
+
+    if custom_instruction:
+        return f"{preset_instruction}. Additional requirement: {custom_instruction}"
+
+    return preset_instruction
+
+
 def gradio_inference(
     editor_value,
-    task_instruction,
+    task_type,
+    custom_instruction,
     steps,
     guidance_scale,
     seed,
@@ -19,6 +55,8 @@ def gradio_inference(
     try:
         image = extract_image_from_editor(editor_value)
         mask = extract_mask_from_editor(editor_value)
+
+        task_instruction = build_task_instruction(task_type, custom_instruction)
 
         output = run_inpainting(
             image=image,
@@ -30,6 +68,7 @@ def gradio_inference(
         )
 
         return (
+            task_instruction,
             output["positive_prompt"],
             output["negative_prompt"],
             output["input_image"],
@@ -55,6 +94,7 @@ def build_app():
 This app combines:
 
 - **Hand-drawn Mask**
+- **Task Selection**
 - **LLM Prompt Assistant**
 - **Stable Diffusion Inpainting**
 
@@ -66,8 +106,9 @@ OpenRouter model: `{OPENROUTER_MODEL}`
 
 1. Upload an image.
 2. Use the brush to draw over the region you want to restore.
-3. Enter a task instruction.
-4. Click Generate Restoration.
+3. Choose the restoration task.
+4. Optionally enter extra requirements.
+5. Click Generate Restoration.
 
 Mask rule:
 
@@ -91,11 +132,20 @@ Mask rule:
                     height=520,
                 )
 
-                task_instruction = gr.Textbox(
-                    label="Task Instruction",
-                    placeholder="Example: remove watermark and restore natural background",
+                task_type = gr.Dropdown(
+                    label="Select Task",
+                    choices=list(TASK_PRESETS.keys()),
+                    value="Remove Watermark",
+                )
+
+                custom_instruction = gr.Textbox(
+                    label="Custom Instruction / Extra Requirement",
+                    placeholder=(
+                        "Optional. Example: keep the wall texture, avoid changing the face, "
+                        "make the background clean"
+                    ),
                     lines=3,
-                    value="remove watermark and restore the background naturally",
+                    value="",
                 )
 
                 with gr.Row():
@@ -127,6 +177,11 @@ Mask rule:
                 )
 
             with gr.Column():
+                final_instruction = gr.Textbox(
+                    label="Final Task Instruction",
+                    lines=2,
+                )
+
                 positive_prompt = gr.Textbox(
                     label="Generated Positive Prompt",
                     lines=4,
@@ -171,12 +226,14 @@ Mask rule:
             fn=gradio_inference,
             inputs=[
                 editor,
-                task_instruction,
+                task_type,
+                custom_instruction,
                 steps,
                 guidance_scale,
                 seed,
             ],
             outputs=[
+                final_instruction,
                 positive_prompt,
                 negative_prompt,
                 processed_input,
