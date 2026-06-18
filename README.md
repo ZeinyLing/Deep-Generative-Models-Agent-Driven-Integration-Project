@@ -34,6 +34,7 @@ The user can upload an image and choose the task. For watermark removal, the use
 ## 3. System Workflow
 
 <img src="img/Workflow.png" width="1000">
+
 ---
 
 ## 4. Main Functions
