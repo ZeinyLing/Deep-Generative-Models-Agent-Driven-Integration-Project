@@ -4,30 +4,36 @@ from PIL import Image, ImageChops, ImageFilter
 from src.config import IMAGE_SIZE
 
 
+# =========================================================
+# Common resize helpers
+# =========================================================
+
 def _resize_keep_aspect_with_padding(image: Image.Image, target_size: int, fill):
     """
-    Resize image to target_size x target_size while keeping aspect ratio.
-    Padding is added instead of stretching/cropping.
-
-    This makes input / mask / result use the same canvas.
+    Resize to target_size x target_size while preserving aspect ratio.
+    Pad remaining area instead of stretching.
     """
-    image = image.convert("RGB") if image.mode != "L" else image.convert("L")
+    mode = "L" if image.mode == "L" else "RGB"
+    image = image.convert(mode)
+
     w, h = image.size
-
     scale = min(target_size / w, target_size / h)
-    new_w = int(round(w * scale))
-    new_h = int(round(h * scale))
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
 
-    resample = Image.Resampling.BILINEAR if image.mode != "L" else Image.Resampling.NEAREST
+    resample = Image.Resampling.NEAREST if mode == "L" else Image.Resampling.BILINEAR
     resized = image.resize((new_w, new_h), resample)
 
-    canvas = Image.new(image.mode, (target_size, target_size), fill)
+    canvas = Image.new(mode, (target_size, target_size), fill)
     left = (target_size - new_w) // 2
     top = (target_size - new_h) // 2
     canvas.paste(resized, (left, top))
-
     return canvas
 
+
+# =========================================================
+# Image / mask preprocessing
+# =========================================================
 
 def preprocess_input_image(image: Image.Image) -> Image.Image:
     """
@@ -41,9 +47,10 @@ def preprocess_input_image(image: Image.Image) -> Image.Image:
     return _resize_keep_aspect_with_padding(image, IMAGE_SIZE, fill=(255, 255, 255))
 
 
+
 def preprocess_mask(mask: Image.Image, blur_radius: float = 0.0) -> Image.Image:
     """
-    Convert mask image to binary grayscale mask and place it on the same square canvas.
+    Convert mask image to binary grayscale mask on the same square canvas.
 
     White region = area to restore.
     Black region = area to preserve.
@@ -56,7 +63,6 @@ def preprocess_mask(mask: Image.Image, blur_radius: float = 0.0) -> Image.Image:
 
     mask_np = np.array(mask)
     mask_np = (mask_np > 127).astype(np.uint8) * 255
-
     mask = Image.fromarray(mask_np).convert("L")
 
     if blur_radius > 0:
@@ -65,10 +71,14 @@ def preprocess_mask(mask: Image.Image, blur_radius: float = 0.0) -> Image.Image:
     return mask
 
 
+# =========================================================
+# Manual mask extraction from Gradio ImageEditor
+# =========================================================
+
 def _mask_from_composite_difference(background: Image.Image, composite: Image.Image) -> Image.Image:
     """
-    Detect brush region by comparing original background and editor composite.
-    This avoids the Gradio layer-alpha issue where the whole canvas becomes mask.
+    Preferred method for Gradio ImageEditor.
+    Compare the original background and the composite preview to detect brush strokes.
     """
     bg = background.convert("RGB")
     comp = composite.convert("RGB")
@@ -78,19 +88,20 @@ def _mask_from_composite_difference(background: Image.Image, composite: Image.Im
 
     diff = ImageChops.difference(bg, comp)
     diff_np = np.array(diff).astype(np.int16)
-
     score = np.abs(diff_np).sum(axis=2)
-    mask_np = (score > 25).astype(np.uint8) * 255
 
+    mask_np = (score > 25).astype(np.uint8) * 255
     return Image.fromarray(mask_np).convert("L")
+
 
 
 def _mask_from_layers_fallback(background: Image.Image, layers) -> Image.Image:
     """
-    Fallback mask extraction from editor layers.
+    Fallback for Gradio versions where composite may not be reliable.
     """
     bg_w, bg_h = background.size
     final_mask = np.zeros((bg_h, bg_w), dtype=np.uint8)
+    bg_rgb = np.array(background.convert("RGB"))
 
     for layer in layers:
         if layer is None:
@@ -103,6 +114,7 @@ def _mask_from_layers_fallback(background: Image.Image, layers) -> Image.Image:
         rgb = layer_np[:, :, :3]
         alpha_ratio = float((alpha > 20).mean())
 
+        # Normal transparent brush layer
         if 0 < alpha_ratio < 0.80:
             mask_np = (alpha > 20).astype(np.uint8) * 255
         else:
@@ -111,11 +123,8 @@ def _mask_from_layers_fallback(background: Image.Image, layers) -> Image.Image:
             b = rgb[:, :, 2].astype(np.int16)
 
             red_stroke = (r > 150) & (r - g > 50) & (r - b > 50)
-
-            bg_rgb = np.array(background.convert("RGB"))
             color_diff = np.abs(rgb.astype(np.int16) - bg_rgb.astype(np.int16)).sum(axis=2)
             white_stroke = (rgb.sum(axis=2) > 650) & (color_diff > 25)
-
             mask_np = (red_stroke | white_stroke).astype(np.uint8) * 255
 
         final_mask = np.maximum(final_mask, mask_np)
@@ -123,13 +132,10 @@ def _mask_from_layers_fallback(background: Image.Image, layers) -> Image.Image:
     return Image.fromarray(final_mask).convert("L")
 
 
-def _validate_mask(mask: Image.Image) -> Image.Image:
-    """
-    Validate mask size and convert to target resolution.
-    """
+
+def _validate_raw_mask(mask: Image.Image) -> Image.Image:
     mask_np = np.array(mask.convert("L"))
     mask_np = (mask_np > 127).astype(np.uint8) * 255
-
     mask_ratio = float((mask_np > 0).mean())
 
     if mask_ratio == 0:
@@ -138,16 +144,17 @@ def _validate_mask(mask: Image.Image) -> Image.Image:
     if mask_ratio > 0.60:
         raise ValueError(
             f"The detected mask covers {mask_ratio:.1%} of the image. "
-            "This is too large. Please clear the layer and draw a smaller mask."
+            "This is too large and usually means the editor layer was parsed incorrectly. "
+            "Please clear the layer and redraw a smaller mask."
         )
 
-    return preprocess_mask(Image.fromarray(mask_np).convert("L"))
+    return Image.fromarray(mask_np).convert("L")
+
 
 
 def extract_mask_from_editor(editor_value):
     """
-    Extract hand-drawn mask from Gradio ImageEditor output.
-
+    Extract hand-drawn mask from Gradio ImageEditor.
     Output:
     - white = inpaint area
     - black = keep area
@@ -171,19 +178,19 @@ def extract_mask_from_editor(editor_value):
         mask = _mask_from_composite_difference(background, composite)
         mask_np = np.array(mask)
         if (mask_np > 0).mean() > 0:
-            return _validate_mask(mask)
+            return preprocess_mask(_validate_raw_mask(mask))
 
     if not layers:
         raise ValueError("Please draw a mask on the image.")
 
     mask = _mask_from_layers_fallback(background, layers)
-    return _validate_mask(mask)
+    return preprocess_mask(_validate_raw_mask(mask))
+
 
 
 def extract_image_from_editor(editor_value):
     """
-    Extract original background image from Gradio ImageEditor output.
-    Do not use composite because composite contains brush strokes.
+    Extract the original background image from Gradio ImageEditor.
     """
     if editor_value is None:
         raise ValueError("No image editor input provided.")
@@ -199,10 +206,71 @@ def extract_image_from_editor(editor_value):
     return preprocess_input_image(background)
 
 
+# =========================================================
+# Auto damage / scratch detection
+# =========================================================
+
+def auto_detect_damage_mask(
+    image: Image.Image,
+    bright_threshold: int = 210,
+    min_local_contrast: int = 35,
+    line_thickness: int = 3,
+) -> Image.Image:
+    """
+    Auto-detect bright scratch / damage lines.
+
+    Best for:
+    - white scratches
+    - bright thin cracks
+    - obvious high-contrast damage marks
+
+    Strategy:
+    1. convert to grayscale
+    2. find very bright pixels
+    3. require local contrast against surrounding area
+    4. slightly dilate / thicken detected lines for inpainting
+    """
+    if image is None:
+        raise ValueError("No input image provided.")
+
+    gray = image.convert("L")
+    gray_np = np.array(gray).astype(np.int16)
+
+    # local mean via blur to estimate surrounding tone
+    blur = gray.filter(ImageFilter.GaussianBlur(radius=3))
+    blur_np = np.array(blur).astype(np.int16)
+
+    bright = gray_np >= bright_threshold
+    high_contrast = (gray_np - blur_np) >= min_local_contrast
+
+    # Detect bright thin damage marks.
+    mask_np = (bright & high_contrast).astype(np.uint8) * 255
+    mask = Image.fromarray(mask_np).convert("L")
+
+    # Thicken a little so inpainting covers the full scratch.
+    for _ in range(max(1, line_thickness)):
+        mask = mask.filter(ImageFilter.MaxFilter(size=3))
+
+    # Optional light cleanup
+    mask = mask.filter(ImageFilter.MedianFilter(size=3))
+
+    # Validate and then preprocess to the final square canvas.
+    try:
+        validated = _validate_raw_mask(mask)
+    except ValueError:
+        raise ValueError(
+            "Auto damage detection could not find a clear damage region. "
+            "Please switch to Manual Mask mode and draw the damaged area yourself."
+        )
+
+    return preprocess_mask(validated)
+
+
+# =========================================================
+# Output helpers
+# =========================================================
+
 def force_same_size(result: Image.Image, reference: Image.Image) -> Image.Image:
-    """
-    Force model result to match reference size exactly.
-    """
     result = result.convert("RGB")
     reference = reference.convert("RGB")
 
@@ -212,26 +280,19 @@ def force_same_size(result: Image.Image, reference: Image.Image) -> Image.Image:
     return result
 
 
-def create_comparison_image(
-    original: Image.Image,
-    mask: Image.Image,
-    result: Image.Image
-) -> Image.Image:
-    """
-    Create fixed-size side-by-side comparison:
-    input | mask | result
 
-    All three panels are forced to the same size.
+def create_comparison_image(original: Image.Image, mask: Image.Image, result: Image.Image) -> Image.Image:
+    """
+    Create side-by-side comparison: input | mask | result
+    All panels use the same size.
     """
     original = original.convert("RGB")
     mask_rgb = mask.convert("RGB")
     result = force_same_size(result, original)
 
     w, h = original.size
-
     comparison = Image.new("RGB", (w * 3, h), color=(255, 255, 255))
     comparison.paste(original, (0, 0))
     comparison.paste(mask_rgb.resize((w, h), Image.Resampling.NEAREST), (w, 0))
     comparison.paste(result, (w * 2, 0))
-
     return comparison
