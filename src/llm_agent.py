@@ -15,35 +15,35 @@ def fallback_prompt(task_instruction: str):
     Used when no LLM API is available.
     """
     task_instruction = task_instruction.strip()
-
     if task_instruction == "":
-        task_instruction = "restore the masked region naturally"
+        task_instruction = "restore only the masked region naturally"
 
     positive_prompt = (
-        f"{task_instruction}, restore the masked region naturally, "
-        f"clean seamless background, natural texture, realistic image restoration, "
-        f"coherent lighting, high quality, detailed, visually consistent with the surrounding area"
+        f"{task_instruction}. "
+        "Edit only the masked region. "
+        "Preserve all unmasked regions exactly. "
+        "Fill the masked area with contextually matching content only. "
+        "Natural restoration, seamless background, coherent lighting, realistic texture, "
+        "high quality, visually consistent with the surrounding area. "
+        "Do not create new people, faces, portraits, text, logos, or unrelated objects."
     )
 
-    negative_prompt = DEFAULT_NEGATIVE_PROMPT
+    negative_prompt = (
+        DEFAULT_NEGATIVE_PROMPT
+        + ", person, face, portrait, human, extra object, unrelated content, full image regeneration"
+    )
 
     return positive_prompt, negative_prompt
 
 
-def extract_json_from_text(text: str):
-    """
-    Try to extract JSON from LLM response.
-    This makes the parser more robust when the model wraps JSON in markdown.
-    """
-    text = text.strip()
 
-    # Remove ```json ... ```
+def extract_json_from_text(text: str):
+    text = text.strip()
     text = re.sub(r"^```json", "", text)
     text = re.sub(r"^```", "", text)
     text = re.sub(r"```$", "", text)
     text = text.strip()
 
-    # Extract first JSON object
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         text = match.group(0)
@@ -51,11 +51,8 @@ def extract_json_from_text(text: str):
     return json.loads(text)
 
 
+
 def generate_prompt_with_llm(task_instruction: str):
-    """
-    Use OpenRouter OpenAI-compatible API to generate prompts.
-    If the API key is missing or the API call fails, fallback prompt generation is used.
-    """
     if not OPENROUTER_API_KEY:
         return fallback_prompt(task_instruction)
 
@@ -67,12 +64,14 @@ Given a user instruction, generate:
 2. negative_prompt
 
 Rules:
-- Focus on natural restoration of the masked region.
-- Preserve the original image style.
-- Avoid changing unmasked regions.
+- Focus on local inpainting only.
+- Preserve the original image style and composition.
+- Preserve all unmasked regions exactly.
+- Fill only the masked region with content that matches nearby context.
+- Do NOT generate new people, faces, portraits, or unrelated objects unless explicitly requested.
 - Avoid fantasy, painting, cartoon, anime, or unrelated style unless the user explicitly asks for it.
 - Make the positive prompt suitable for Stable Diffusion Inpainting.
-- Make the negative prompt describe unwanted artifacts.
+- Make the negative prompt describe unwanted artifacts and unrelated hallucinations.
 - Output valid JSON only.
 - JSON keys must be exactly: positive_prompt, negative_prompt.
 """
@@ -97,14 +96,13 @@ Generate suitable prompts for Stable Diffusion Inpainting.
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                "temperature": 0.3,
+                "temperature": 0.2,
             },
             timeout=60,
         )
 
         response.raise_for_status()
         data = response.json()
-
         content = data["choices"][0]["message"]["content"]
         parsed = extract_json_from_text(content)
 
@@ -115,7 +113,10 @@ Generate suitable prompts for Stable Diffusion Inpainting.
             return fallback_prompt(task_instruction)
 
         if negative_prompt == "":
-            negative_prompt = DEFAULT_NEGATIVE_PROMPT
+            negative_prompt = (
+                DEFAULT_NEGATIVE_PROMPT
+                + ", person, face, portrait, human, extra object, unrelated content, full image regeneration"
+            )
 
         return positive_prompt, negative_prompt
 
