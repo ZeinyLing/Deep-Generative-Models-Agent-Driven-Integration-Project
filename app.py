@@ -11,11 +11,7 @@ from src.inpaint_pipeline import run_inpainting
 
 TASK_PRESETS = {
     "Remove Watermark": "remove watermark and restore the background naturally",
-    "Remove Text / Logo": "remove text or logo and restore the background naturally",
-    "Remove Object": "remove the selected object and fill the region with a natural background",
     "Restore Damage / Scratch": "repair the damaged or scratched area and restore natural texture",
-    "Clean Background": "clean the selected background region and make it visually consistent",
-    "Custom": "",
 }
 
 
@@ -121,7 +117,7 @@ All outputs are unified to the same canvas size:
                 task_type = gr.Dropdown(
                     label="Select Task",
                     choices=list(TASK_PRESETS.keys()),
-                    value="Remove Text / Logo",
+                    value="Remove Watermark",
                 )
 
                 custom_instruction = gr.Textbox(
