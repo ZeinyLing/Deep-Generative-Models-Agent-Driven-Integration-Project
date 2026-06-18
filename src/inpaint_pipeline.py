@@ -15,6 +15,7 @@ from src.config import (
 from src.image_utils import (
     preprocess_input_image,
     preprocess_mask,
+    force_same_size,
     create_comparison_image,
 )
 
@@ -67,12 +68,16 @@ def run_inpainting(
     image,
     mask,
     task_instruction,
-    steps=50,
-    guidance_scale=7.0,
+    steps=40,
+    guidance_scale=5.5,
     seed=42,
 ):
     """
     Main inference function.
+
+    Important:
+    - image, mask, result, comparison are forced to the same fixed canvas size.
+    - width and height are explicitly passed to the pipeline to avoid inconsistent output sizes.
     """
     if image is None:
         raise ValueError("Please upload an input image.")
@@ -97,10 +102,14 @@ def run_inpainting(
             negative_prompt=negative_prompt,
             image=image,
             mask_image=mask,
+            width=image.width,
+            height=image.height,
             num_inference_steps=int(steps),
             guidance_scale=float(guidance_scale),
             generator=generator,
         ).images[0]
+
+    result = force_same_size(result, image)
 
     timestamp = int(time.time())
 
