@@ -31,47 +31,6 @@ The user can upload an image and choose the task. For watermark removal, the use
 
 ---
 
-## 3. System Architecture
-
-The system is composed of five main modules:
-
-```text
-AI-Powered Image Restoration Assistant
-│
-├── app.py
-│   ├── Builds the Gradio user interface
-│   ├── Handles user inputs
-│   ├── Selects restoration task
-│   └── Sends image, mask, and task instruction to the pipeline
-│
-├── src/config.py
-│   ├── Stores model settings
-│   ├── Defines image size
-│   ├── Selects CPU or GPU device
-│   ├── Loads Hugging Face token
-│   └── Loads OpenRouter API key
-│
-├── src/image_utils.py
-│   ├── Preprocesses input images
-│   ├── Extracts manual masks from Gradio ImageEditor
-│   ├── Automatically detects scratch or damage masks
-│   ├── Unifies image, mask, and result size
-│   └── Creates comparison images
-│
-├── src/llm_agent.py
-│   ├── Generates positive and negative prompts
-│   ├── Uses OpenRouter API if available
-│   └── Uses a short rule-based fallback prompt if no API key is available
-│
-└── src/inpaint_pipeline.py
-    ├── Loads Stable Diffusion Inpainting model
-    ├── Runs image inpainting
-    ├── Saves restored image
-    └── Saves comparison result
-```
-
----
-
 ## 4. System Workflow
 
 The overall workflow is shown below:
