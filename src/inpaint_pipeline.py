@@ -61,7 +61,8 @@ def load_pipeline():
             print("[Info] xFormers not available. Continue without it.")
 
     _pipe = pipe
-    return _pipe
+    return pipe
+
 
 
 def run_inpainting(
@@ -74,10 +75,7 @@ def run_inpainting(
 ):
     """
     Main inference function.
-
-    Important:
-    - image, mask, result, comparison are forced to the same fixed canvas size.
-    - width and height are explicitly passed to the pipeline to avoid inconsistent output sizes.
+    - image, mask, result, and comparison are all unified to the same canvas size.
     """
     if image is None:
         raise ValueError("Please upload an input image.")
@@ -93,7 +91,6 @@ def run_inpainting(
     positive_prompt, negative_prompt = generate_prompt_with_llm(task_instruction)
 
     pipe = load_pipeline()
-
     generator = torch.Generator(device=DEVICE).manual_seed(int(seed))
 
     with torch.inference_mode():
@@ -112,7 +109,6 @@ def run_inpainting(
     result = force_same_size(result, image)
 
     timestamp = int(time.time())
-
     result_path = os.path.join(OUTPUT_DIR, f"result_{timestamp}.png")
     comparison_path = os.path.join(OUTPUT_DIR, f"comparison_{timestamp}.png")
 
