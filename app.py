@@ -5,6 +5,7 @@ from src.config import DEVICE, OPENROUTER_API_KEY, OPENROUTER_MODEL
 from src.image_utils import (
     extract_image_from_editor,
     extract_mask_from_editor,
+    auto_detect_damage_mask,
 )
 from src.inpaint_pipeline import run_inpainting
 
@@ -14,16 +15,16 @@ TASK_PRESETS = {
     "Restore Damage / Scratch": "repair the damaged or scratched area and restore natural texture",
 }
 
+DAMAGE_MODES = [
+    "Manual Mask",
+    "Auto Detect Scratch",
+]
+
 
 def build_task_instruction(task_type, custom_instruction):
     task_type = task_type or "Remove Watermark"
     custom_instruction = (custom_instruction or "").strip()
     preset_instruction = TASK_PRESETS.get(task_type, "")
-
-    if task_type == "Custom":
-        if custom_instruction:
-            return custom_instruction
-        return "restore only the masked region naturally"
 
     if custom_instruction:
         return f"{preset_instruction}. Additional requirement: {custom_instruction}"
@@ -31,9 +32,20 @@ def build_task_instruction(task_type, custom_instruction):
     return preset_instruction
 
 
+
+def toggle_damage_mode(task_type):
+    """
+    Show auto/manual damage mode only when Restore Damage / Scratch is selected.
+    """
+    visible = task_type == "Restore Damage / Scratch"
+    return gr.update(visible=visible)
+
+
+
 def gradio_inference(
     editor_value,
     task_type,
+    damage_mode,
     custom_instruction,
     steps,
     guidance_scale,
@@ -41,9 +53,13 @@ def gradio_inference(
 ):
     try:
         image = extract_image_from_editor(editor_value)
-        mask = extract_mask_from_editor(editor_value)
-
         task_instruction = build_task_instruction(task_type, custom_instruction)
+
+        # Decide how to get the mask.
+        if task_type == "Restore Damage / Scratch" and damage_mode == "Auto Detect Scratch":
+            mask = auto_detect_damage_mask(image)
+        else:
+            mask = extract_mask_from_editor(editor_value)
 
         output = run_inpainting(
             image=image,
@@ -70,6 +86,7 @@ def gradio_inference(
         raise gr.Error(str(e))
 
 
+
 def build_app():
     llm_status = "OpenRouter API enabled" if OPENROUTER_API_KEY else "Fallback prompt generator enabled"
 
@@ -82,20 +99,27 @@ Current device: `{DEVICE}`
 LLM mode: `{llm_status}`  
 OpenRouter model: `{OPENROUTER_MODEL}`
 
+## Supported Tasks
+
+- **Remove Watermark**
+- **Restore Damage / Scratch**
+
 ## How to use
 
 1. Upload an image.
 2. Use the **red brush** to draw over the region you want to restore.
-3. Choose the restoration task.
-4. Optionally enter extra requirements.
-5. Click Generate Restoration.
+3. Choose the task.
+4. For **Restore Damage / Scratch**, you may choose:
+   - **Manual Mask**: draw the damaged area yourself
+   - **Auto Detect Scratch**: automatically detect bright scratches / damage lines
+5. Optionally enter extra requirements.
+6. Click **Generate Restoration**.
 
-All outputs are unified to the same canvas size:
+## Notes
 
-- Processed Input
-- Extracted Mask
-- Restored Result
-- Comparison
+- **Remove Watermark**: manual mask is recommended.
+- **Restore Damage / Scratch**: auto detect works best for obvious bright / white scratches.
+- All outputs are unified to the same canvas size.
 """
         )
 
@@ -120,10 +144,17 @@ All outputs are unified to the same canvas size:
                     value="Remove Watermark",
                 )
 
+                damage_mode = gr.Radio(
+                    label="Damage Mode",
+                    choices=DAMAGE_MODES,
+                    value="Manual Mask",
+                    visible=False,
+                )
+
                 custom_instruction = gr.Textbox(
                     label="Custom Instruction / Extra Requirement",
                     placeholder=(
-                        "Optional. Example: preserve original structure, keep grass texture, "
+                        "Optional. Example: preserve original structure, keep background texture, "
                         "do not create unrelated objects"
                     ),
                     lines=3,
@@ -200,19 +231,21 @@ All outputs are unified to the same canvas size:
                 )
 
                 with gr.Row():
-                    result_file = gr.File(
-                        label="Download Result",
-                    )
+                    result_file = gr.File(label="Download Result")
+                    comparison_file = gr.File(label="Download Comparison")
 
-                    comparison_file = gr.File(
-                        label="Download Comparison",
-                    )
+        task_type.change(
+            fn=toggle_damage_mode,
+            inputs=[task_type],
+            outputs=[damage_mode],
+        )
 
         run_button.click(
             fn=gradio_inference,
             inputs=[
                 editor,
                 task_type,
+                damage_mode,
                 custom_instruction,
                 steps,
                 guidance_scale,
@@ -236,23 +269,11 @@ All outputs are unified to the same canvas size:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--share",
-        action="store_true",
-        help="Create a public Gradio link.",
-    )
-
-    parser.add_argument(
-        "--server_port",
-        type=int,
-        default=7860,
-    )
-
+    parser.add_argument("--share", action="store_true", help="Create a public Gradio link.")
+    parser.add_argument("--server_port", type=int, default=7860)
     args = parser.parse_args()
 
     demo = build_app()
-
     demo.launch(
         share=args.share,
         server_name="0.0.0.0",
