@@ -31,52 +31,16 @@ The user can upload an image and choose the task. For watermark removal, the use
 
 ---
 
-## 4. System Workflow
+## 3. System Workflow
 
 The overall workflow is shown below:
 
-```text
-User Uploads Image
-        │
-        ▼
-Select Task
-        │
-        ├── Remove Watermark
-        │       └── Manual mask is required
-        │
-        └── Restore Damage / Scratch
-                ├── Manual Mask
-                └── Auto Detect Scratch
-        │
-        ▼
-Image and Mask Preprocessing
-        │
-        ▼
-Prompt Preparation
-        │
-        ├── OpenRouter LLM Prompt Generation
-        │
-        └── Rule-based Fallback Prompt
-        │
-        ▼
-Stable Diffusion Inpainting
-        │
-        ▼
-Generate Restored Image
-        │
-        ▼
-Output:
-- Processed Input
-- Extracted Mask
-- Restored Result
-- Comparison Image
-```
 
 ---
 
-## 5. Main Functions
+## 4. Main Functions
 
-### 5.1 Remove Watermark
+### 4.1 Remove Watermark
 
 The **Remove Watermark** task is used to remove unwanted text, logos, or watermark regions from an image.
 
@@ -92,7 +56,7 @@ Mask Mode: Manual Mask
 
 ---
 
-### 5.2 Restore Damage / Scratch
+### 4.2 Restore Damage / Scratch
 
 The **Restore Damage / Scratch** task is used to repair damaged regions, scratches, or visible artifacts in an image.
 
@@ -121,7 +85,7 @@ Recommended for:
 
 ---
 
-## 6. File Structure
+## 5. File Structure
 
 A recommended project structure is shown below:
 
@@ -132,20 +96,17 @@ project/
 ├── requirements.txt
 ├── .env
 │
-├── src/
-│   ├── config.py
-│   ├── image_utils.py
-│   ├── inpaint_pipeline.py
-│   └── llm_agent.py
-│
-└── outputs/
-    ├── result_xxxxx.png
-    └── comparison_xxxxx.png
+└── src/
+    ├── config.py
+    ├── image_utils.py
+    ├── inpaint_pipeline.py
+    └── llm_agent.py
+
 ```
 
 ---
 
-## 7. Environment Requirements
+## 6. Environment Requirements
 
 The project requires Python and several deep learning libraries.
 
@@ -172,7 +133,7 @@ requests
 
 ---
 
-## 8. requirements.txt
+## 7. requirements.txt
 
 Create a `requirements.txt` file with the following content:
 
@@ -199,7 +160,7 @@ However, xFormers is optional. If it is not available, the program can still run
 
 ---
 
-## 9. Environment Variable Setup
+## 8. Environment Variable Setup
 
 Create a `.env` file in the project root directory.
 
@@ -211,7 +172,7 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 HF_TOKEN=
 ```
 
-### 9.1 Hugging Face Token
+### 8.1 Hugging Face Token
 
 `HF_TOKEN` is optional for the current model:
 
@@ -228,7 +189,7 @@ To avoid download limits, create a Hugging Face access token and set:
 HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
 ```
 
-### 9.2 OpenRouter API Key
+### 8.2 OpenRouter API Key
 
 `OPENROUTER_API_KEY` is optional.
 
@@ -243,7 +204,7 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 
 ---
 
-## 10. Local Execution Steps
+## 9. Local Execution Steps
 
 ### Step 1: Clone or Download the Project
 
@@ -327,7 +288,7 @@ Open the local URL in a browser.
 
 ---
 
-## 11. How to Use the App
+## 10. How to Use the App
 
 ### Remove Watermark
 
