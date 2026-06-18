@@ -9,31 +9,51 @@ from src.config import (
 )
 
 
+# CLIP text encoder used by Stable Diffusion v1.x supports about 77 tokens.
+# Keep prompts short to avoid truncation warnings.
+MAX_PROMPT_WORDS = 55
+MAX_NEGATIVE_WORDS = 35
+
+
+def _limit_words(text: str, max_words: int) -> str:
+    words = text.strip().split()
+    if len(words) <= max_words:
+        return text.strip()
+    return " ".join(words[:max_words]).strip()
+
+
 def fallback_prompt(task_instruction: str):
     """
-    Rule-based prompt generation used when no LLM API is available.
+    Short rule-based prompt builder.
+    This avoids CLIP 77-token truncation.
     """
-    task_instruction = task_instruction.strip()
-    if task_instruction == "":
-        task_instruction = "restore only the masked region naturally"
+    task_instruction = (task_instruction or "").strip().lower()
 
-    positive_prompt = (
-        f"{task_instruction}. "
-        "Edit only the masked region. "
-        "Preserve all unmasked regions exactly. "
-        "Fill the masked area with contextually matching content only. "
-        "Natural restoration, seamless background, coherent lighting, realistic texture, "
-        "high quality, detailed, visually consistent with the surrounding area. "
-        "Do not create new people, faces, portraits, text, logos, or unrelated objects."
-    )
+    if "scratch" in task_instruction or "damage" in task_instruction or "repair" in task_instruction:
+        positive_prompt = (
+            "repair the masked damaged area, match surrounding texture, "
+            "natural realistic restoration, preserve unmasked image"
+        )
+    elif "watermark" in task_instruction:
+        positive_prompt = (
+            "remove the masked watermark, restore natural background, "
+            "match surrounding texture and lighting, preserve unmasked image"
+        )
+    else:
+        positive_prompt = (
+            "restore the masked area naturally, match surrounding texture, "
+            "preserve unmasked image"
+        )
 
     negative_prompt = (
-        DEFAULT_NEGATIVE_PROMPT
-        + ", person, face, portrait, human, extra object, unrelated content, full image regeneration"
+        "text, watermark, logo, blur, artifacts, distortion, color mismatch, "
+        "new object, person, face, portrait"
     )
 
-    return positive_prompt, negative_prompt
-
+    return (
+        _limit_words(positive_prompt, MAX_PROMPT_WORDS),
+        _limit_words(negative_prompt, MAX_NEGATIVE_WORDS),
+    )
 
 
 def extract_json_from_text(text: str):
@@ -50,41 +70,26 @@ def extract_json_from_text(text: str):
     return json.loads(text)
 
 
-
 def generate_prompt_with_llm(task_instruction: str):
     """
-    Use OpenRouter to generate positive / negative prompts.
-    Fallback to rule-based prompt if the API key is missing or request fails.
+    Use OpenRouter if available.
+    If the API key/model is invalid, fallback to a short static prompt.
     """
     if not OPENROUTER_API_KEY:
         return fallback_prompt(task_instruction)
 
     system_prompt = """
-You are an expert prompt engineer for diffusion-based image inpainting.
-
-Given a user instruction, generate:
-1. positive_prompt
-2. negative_prompt
-
+Generate short Stable Diffusion inpainting prompts.
+Return valid JSON only with keys: positive_prompt, negative_prompt.
 Rules:
-- Focus on local inpainting only.
-- Preserve the original image style and composition.
-- Preserve all unmasked regions exactly.
-- Fill only the masked region with content that matches nearby context.
-- Do NOT generate new people, faces, portraits, or unrelated objects unless explicitly requested.
-- Avoid fantasy, painting, cartoon, anime, or unrelated style unless the user explicitly asks for it.
-- Make the positive prompt suitable for Stable Diffusion Inpainting.
-- Make the negative prompt describe unwanted artifacts and unrelated hallucinations.
-- Output valid JSON only.
-- JSON keys must be exactly: positive_prompt, negative_prompt.
+- positive_prompt under 45 words
+- negative_prompt under 25 words
+- local inpainting only
+- preserve unmasked image
+- no new people, faces, text, logos, or unrelated objects
 """
 
-    user_prompt = f"""
-User instruction:
-{task_instruction}
-
-Generate suitable prompts for Stable Diffusion Inpainting.
-"""
+    user_prompt = f"Task: {task_instruction}"
 
     try:
         response = requests.post(
@@ -112,18 +117,21 @@ Generate suitable prompts for Stable Diffusion Inpainting.
         positive_prompt = parsed.get("positive_prompt", "").strip()
         negative_prompt = parsed.get("negative_prompt", "").strip()
 
-        if positive_prompt == "":
+        if not positive_prompt:
             return fallback_prompt(task_instruction)
 
-        if negative_prompt == "":
+        if not negative_prompt:
             negative_prompt = (
-                DEFAULT_NEGATIVE_PROMPT
-                + ", person, face, portrait, human, extra object, unrelated content, full image regeneration"
+                "text, watermark, logo, blur, artifacts, distortion, "
+                "new object, person, face"
             )
 
-        return positive_prompt, negative_prompt
+        return (
+            _limit_words(positive_prompt, MAX_PROMPT_WORDS),
+            _limit_words(negative_prompt, MAX_NEGATIVE_WORDS),
+        )
 
     except Exception as e:
-        print("[Warning] LLM prompt generation failed. Using fallback prompt.")
+        print("[Warning] LLM prompt generation failed. Using short fallback prompt.")
         print(e)
         return fallback_prompt(task_instruction)
