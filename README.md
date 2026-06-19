@@ -93,8 +93,9 @@ project/
 │
 ├── app.py
 ├── requirements.txt
+├── requirements.txt
 ├── .env
-│
+├── sample/    #範例影像
 └── src/
     ├── config.py
     ├── image_utils.py
