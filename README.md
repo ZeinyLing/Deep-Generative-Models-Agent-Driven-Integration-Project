@@ -93,9 +93,10 @@ project/
 │
 ├── app.py
 ├── requirements.txt
-├── requirements.txt
+├── 314551087_hw7.ipynb
+├── Agent_Workflow_Log.md
 ├── .env
-├── sample/    #範例影像
+├── sample_img/    #範例影像
 └── src/
     ├── config.py
     ├── image_utils.py
