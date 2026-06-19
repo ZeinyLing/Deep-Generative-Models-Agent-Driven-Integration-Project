@@ -306,16 +306,6 @@ Open the local URL in a browser.
 
 ---
 
-### Restore Damage / Scratch with Manual Mask
-
-1. Upload an image.
-2. Select **Restore Damage / Scratch**.
-3. Select **Manual Mask**.
-4. Draw over the damaged or scratched region.
-5. Click **Generate Restoration**.
-
----
-
 ### Restore Damage / Scratch with Auto Detect Scratch
 
 1. Upload an image.
